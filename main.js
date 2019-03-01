@@ -12,7 +12,7 @@ const precision = 1;
 const colors = ['FF0000', 'FF9400', 'FFFF00', '0FAD00', '0010A5', 'C5007C'];
 
 // Time in milliseconds at which to send the data to the server.
-const timeDelay = 33;
+const timeDelay = 35;
 // Number of times faster to analyze the audio without sending LED data.
 const speedMult = 4;
 // Audio sample rate, also used to calculate Hz ranges.
@@ -147,8 +147,11 @@ client.on('connect', () => {
         if (prevWrite[i] != val) {
           anyWrite = true;
         }
-        client.write(
-            `brightness 1,${val},${numLEDs - i - precision},${precision};`);
+        // Inverse of colorShiftStep requirement below. To prevent flickering.
+        if (lowAccumulator < 1000 / (timeDelay / speedMult)) {
+          client.write(
+              `brightness 1,${val},${numLEDs - i - precision},${precision};`);
+        }
         prevWrite[i] = val;
       }
     }
@@ -186,7 +189,7 @@ client.on('connect', () => {
       lowAccumulator = 0;
     }
 
-    if (avg < 0.1 && lowAccumulator >= 1000 / (timeDelay / speedMult)) {
+    if (lowAccumulator >= 1000 / (timeDelay / speedMult)) {
       colorShiftStep();
     }
 
