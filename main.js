@@ -2,7 +2,7 @@ const net = require('net');
 const portAudio = require('naudiodon');
 const Analyser = require('audio-analyser');
 
-const DEBUG = false;
+const DEBUG = 0;
 
 // Number of LEDs total to control.
 const numLEDs = 150;
@@ -33,7 +33,7 @@ const minIndex = Math.ceil(minHz / binDelta);
 const maxIndex = Math.floor(maxHz / binDelta);
 
 // Audio device ID
-const id = 36;
+const id = 37;
 console.log(portAudio.getDevices().filter((el) => {
   return el.maxInputChannels > 0;
 }).map((el) => {
@@ -42,6 +42,7 @@ console.log(portAudio.getDevices().filter((el) => {
 
 let interval;
 let count = 0;
+let clientCount = 0;
 let data = new Float32Array(binCount);
 
 let history = [];
@@ -115,6 +116,7 @@ client.on('connect', () => {
     let sum = 0;
     let adjSum = 0;
     let anyWrite = false;
+    let toWrite = [];
     for (let i = 0; i < numLEDs; i += precision) {
       let pPercent = (i - precision) / numLEDs;
       let nPercent = (i + precision) / numLEDs;
@@ -133,7 +135,7 @@ client.on('connect', () => {
       value -= minDB;
       value /= (maxDB - minDB);
 
-      let val = Math.round(value * 255);
+      let val = Math.round((value * lerp(1, 1.5, i / prevWrite.length)) * 255);
 
       if (i < numLEDs / 2) {
         adjSum += value;
@@ -141,6 +143,7 @@ client.on('connect', () => {
       sum += value;
 
       if (count % speedMult == 0) {
+        val = Math.min(255, val);
         if (prevWrite[i] > val) {
           val = Math.max(prevWrite[i] - 5, 0);
         }
@@ -149,10 +152,30 @@ client.on('connect', () => {
         }
         // Inverse of colorShiftStep requirement below. To prevent flickering.
         if (lowAccumulator < 1000 / (timeDelay / speedMult)) {
-          client.write(
+          toWrite.push(
               `brightness 1,${val},${numLEDs - i - precision},${precision};`);
         }
         prevWrite[i] = val;
+      }
+    }
+    if (count % speedMult == 0) {
+      const diff = count / speedMult - clientCount;
+      if (diff > 9 || diff < 0) {
+        if (diff > 500) {
+          clientCount = count / speedMult;
+        }
+        if (DEBUG == 0 && diff % 10 == 0) {
+          if (diff > 0) {
+            console.log('Server is falling behind!', diff, count / speedMult,
+                        clientCount);
+          } else {
+            console.log('Server catching up.', diff, count / speedMult,
+                        clientCount);
+          }
+        }
+        // clientCount = count / speedMult;
+      } else if (diff < 3) {
+        client.write(toWrite.join(''), (err) => { clientCount++; });
       }
     }
     let realAvg = sum / numLEDs / precision * 2;
@@ -165,7 +188,7 @@ client.on('connect', () => {
     }
 
     totalChange = Math.pow(totalChange, 2);
-    let isPeak = totalChange > 0.05;
+    let isPeak = totalChange > 0.04;
 
     let isBeat = avg > 0.2 && totalChange > thresh;
 
@@ -212,21 +235,40 @@ client.on('connect', () => {
       }
     }
 
-    if (DEBUG) {
+    if (DEBUG == 1) {
       // let inc = 0.004;
       let inc = 0.005;
+      const out = [];
       for (let i = 0; i < 1; i += inc) {
         if (totalChange <= i && totalChange > i - inc) {
-          process.stdout.write('X');
+          out.push('X');
         } else if (thresh <= i && thresh > i - inc) {
-          process.stdout.write('|');
+          out.push('|');
         } else if (i < realAvg){
-          process.stdout.write((isBeat && !lastBeat) ? '/' : '-');
+          out.push((isBeat && !lastBeat) ? '/' : '-');
         } else {
-          process.stdout.write(isPeak ? ' ' : '_');
+          out.push(isPeak ? ' ' : '_');
         }
         // else process.stdout.write('_');
       }
+      process.stdout.write(out.join(''));
+    } else if (DEBUG == 2 && count % 16 == 0) {
+      const width = 25;
+      let out = [];
+      for (let i = 0; i < prevWrite.length; i += 3) {
+        out.push('\n');
+        for (let r = 0; r <= width; r++) {
+          const p = (r / width) * 255;
+          if (r == width) {
+            out = out.concat((prevWrite[i] + '').split(''));
+          } else if (prevWrite[i] < p) {
+            out.push('_');
+          } else {
+            out.push('-');
+          }
+        }
+      }
+      console.log(out.join(''));
     }
 
     let dur = 8;
@@ -250,11 +292,12 @@ client.on('connect', () => {
     bpm = Math.round(numLastSec / dur * 60);
     thresh = newThresh;
 
-    if (thresh < 0.05) thresh = 0.05;
+    if (thresh < 0.04) thresh = 0.04;
     if (thresh > 1) thresh = 1;
 
-    if (DEBUG) {
-      process.stdout.write(bpm + ' ' + Math.round(thresh*10000)/10000 + '\n');
+    if (DEBUG == 1) {
+      process.stdout.write(bpm + ' ' + Math.round(thresh * 10000) / 10000 +
+                           '\n');
     }
 
     lastBeat = isBeat;
@@ -263,9 +306,11 @@ client.on('connect', () => {
 });
 
 function rainbowRotateStep() {
-  if (count % (speedMult * 4) == 0) {
+  const mult = 4;
+  if (count % (speedMult * mult) == 0) {
     client.write('brightness 1,255;rainbow 1;rotate 1,' +
-                 Math.floor(count / speedMult) % numLEDs + ';render;');
+                     Math.floor(count / speedMult) % numLEDs + ';render;',
+                 (err) => { clientCount += mult; });
   }
 }
 
@@ -273,7 +318,8 @@ let r = 0;
 let g = 0;
 let b = 0;
 function colorShiftStep() {
-  if (count % (speedMult * 4) == 0) {
+  const mult = 4;
+  if (count % (speedMult * mult) == 0) {
     if (r + g + b != 255) {
       if (r > 255) {
         r--;
@@ -303,7 +349,8 @@ function colorShiftStep() {
     const color = ('0' + r.toString(16)).slice(-2) +
                   ('0' + g.toString(16)).slice(-2) +
                   ('0' + b.toString(16)).slice(-2);
-    client.write('brightness 1,255;fill 1,' + color + ';render;');
+    client.write(`brightness 1,255;fill 1,${color};render;`,
+                 (err) => { clientCount += mult; });
     // console.log(color);
   }
 }
