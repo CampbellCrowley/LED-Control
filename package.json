@@ -4,6 +4,6 @@
   "private": true,
   "dependencies": {
     "audio-analyser": "^1.0.2",
-    "naudiodon": "^0.4.7"
+    "naudiodon": "^2.1.0"
   }
 }
