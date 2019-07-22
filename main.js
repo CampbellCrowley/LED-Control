@@ -40,7 +40,9 @@ const maxIndex = Math.floor(maxHz / binDelta);
 const devices = portAudio.getDevices().filter((el) => el.maxInputChannels > 0);
 
 // Audio device ID
-const id = devices.find((el) => el.name.indexOf('VB-Audio VoiceMeeter AUX VAIO') > -1).id;
+const id =
+    devices.find((el) => el.name.indexOf('VB-Audio VoiceMeeter AUX VAIO') > -1)
+        .id;
 console.log(devices.map((el) => `id: ${el.id} (${el.name})`).join('\n'));
 
 let interval;
@@ -79,7 +81,8 @@ let audio = new portAudio.AudioIO({
     sampleFormat: sampleFormat,
     sampleRate: sampleRate,
     deviceId: id,
-    highwaterMark: Math.ceil(sampleRate * sampleFormat / 8 * (timeDelay / 1000) / speedMult),
+    highwaterMark: Math.ceil(
+        sampleRate * sampleFormat / 8 * (timeDelay / 1000) / speedMult),
   },
 });
 
@@ -96,7 +99,7 @@ process.stdin.on('data', (line) => {
 
 let client = new net.Socket();
 function connect() {
- client.connect(81, '192.168.0.203');
+  client.connect(81, '192.168.0.203');
 }
 connect();
 
@@ -179,16 +182,19 @@ function mainLoop() {
       }
       if (DEBUG == 0 && diff % 10 == 0) {
         if (diff > 0) {
-          console.log('Server is falling behind!', diff, count / speedMult,
-                      clientCount);
+          console.log(
+              'Server is falling behind!', diff, count / speedMult,
+              clientCount);
         } else {
-          console.log('Server catching up.', diff, count / speedMult,
-                      clientCount);
+          console.log(
+              'Server catching up.', diff, count / speedMult, clientCount);
         }
       }
       // clientCount = count / speedMult;
     } else if (diff < 3) {
-      if (client.writable) client.write(toWrite.join(''), (err) => { clientCount++; });
+      if (client.writable) {
+        client.write(toWrite.join(''), (err) => clientCount++);
+      }
     }
   }
   let realAvg = sum / numLEDs / precision * 2;
@@ -258,7 +264,7 @@ function mainLoop() {
         out.push('X');
       } else if (thresh <= i && thresh > i - inc) {
         out.push('|');
-      } else if (i < realAvg){
+      } else if (i < realAvg) {
         out.push((isBeat && !lastBeat) ? '/' : '-');
       } else {
         out.push(isPeak ? ' ' : '_');
@@ -301,8 +307,7 @@ function mainLoop() {
   diff = Math.abs(diff);
   diff = diff * (diff * 2) * (diff * 3);
   newThresh += diff * mag;
-  numLastSec =
-      beatHistory.reduce((a, c) => c.val >= newThresh ? a + 1 : a, 0);
+  numLastSec = beatHistory.reduce((a, c) => c.val >= newThresh ? a + 1 : a, 0);
   bpm = Math.round(numLastSec / dur * 60);
   thresh = newThresh;
 
@@ -310,8 +315,7 @@ function mainLoop() {
   if (thresh > 1) thresh = 1;
 
   if (DEBUG == 1) {
-    process.stdout.write(bpm + ' ' + Math.round(thresh * 10000) / 10000 +
-                         '\n');
+    process.stdout.write(bpm + ' ' + Math.round(thresh * 10000) / 10000 + '\n');
   }
 
   lastBeat = isBeat;
@@ -322,9 +326,10 @@ function rainbowRotateStep() {
   if (!client.writable) return;
   const mult = 4;
   if (count % (speedMult * mult) == 0) {
-    client.write('brightness 1,255;rainbow 1;rotate 1,' +
-                     Math.floor(count / speedMult) % numLEDs + ';render;',
-                 (err) => { clientCount += mult; });
+    client.write(
+        'brightness 1,255;rainbow 1;rotate 1,' +
+            Math.floor(count / speedMult) % numLEDs + ';render;',
+        (err) => clientCount += mult);
   }
 }
 
@@ -362,10 +367,10 @@ function colorShiftStep() {
       b--;
     }
     const color = ('0' + r.toString(16)).slice(-2) +
-                  ('0' + g.toString(16)).slice(-2) +
-                  ('0' + b.toString(16)).slice(-2);
-    client.write(`brightness 1,255;fill 1,${color};render;`,
-                 (err) => { clientCount += mult; });
+        ('0' + g.toString(16)).slice(-2) + ('0' + b.toString(16)).slice(-2);
+    client.write(
+        `brightness 1,255;fill 1,${color};render;`,
+        (err) => clientCount += mult);
     // console.log(color);
   }
 }
@@ -407,29 +412,26 @@ function shiftColors() {
   rShift = r;
   bShift = b;
   gShift = g;
-  return ('0' + r.toString(16)).slice(-2) +
-           ('0' + g.toString(16)).slice(-2) +
-           ('0' + b.toString(16)).slice(-2);
+  return ('0' + r.toString(16)).slice(-2) + ('0' + g.toString(16)).slice(-2) +
+      ('0' + b.toString(16)).slice(-2);
 }
 
 function lerp(a, b, n) {
   return a * (1 - n) + b * n
 }
 
-client.on('data', (data) => {
-  console.log(data);
-});
+client.on('data', (data) => console.log(data));
 
 client.on('close', () => {
   console.log('Server Connection closed');
   if (interval) clearInterval(interval);
-  if (!exiting) connect();
-  else process.exit();
+  if (!exiting)
+    connect();
+  else
+    process.exit();
 });
 
-client.on('error', (err) => {
-  console.error(err);
-});
+client.on('error', (err) => console.error(err));
 
 client.on('finish', () => {
   console.log('Closing socket...');
